@@ -27,7 +27,7 @@ one sig KeyPairs {
 }
 
 fun getLTK[name_a: name, name_b: name]: lone skey {
-  (KeyPairs.ltks)[name_a][name_b]
+  (KeyPairs.ltks)[name_a][name_b]  
 }
 
 fun getInv[k: Key]: one Key {

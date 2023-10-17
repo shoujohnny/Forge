@@ -1,4 +1,6 @@
-#lang forge/bsl
+#lang forge --/bsl
+-- Is *reachable* itself being created improperly? (reachable (join n next) n next) seems like the right expansion.
+-- Yes: evaluating `reachable` produces ... itself.
 option run_sterling off
 
 

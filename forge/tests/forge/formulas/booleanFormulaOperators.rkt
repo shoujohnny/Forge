@@ -45,7 +45,7 @@ pred Or { -- ||, or
     not (False or False)
 }
 
-pred Implies { -- =>, implies, <=>, iff, => else, implies else
+pred Implies { -- =>, implies, <=>, iff, => else, implies else        
     True => True
     not (True => False)
     False => True

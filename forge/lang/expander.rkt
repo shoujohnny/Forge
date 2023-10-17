@@ -937,6 +937,7 @@
 
 (define-syntax (Expr stx)
   (syntax-parse stx
+    
   [((~datum Expr) "let" decls:LetDeclListClass bob:BlockOrBarClass)
    (syntax/loc stx (let decls.translate bob.exprs))]
 
@@ -944,7 +945,9 @@
    (syntax/loc stx (raise "bind not implemented."))]
 
   ; Quantifier
-  [((~datum Expr) q:QuantClass decls:DeclListClass bob:BlockOrBarClass)                       
+  [((~datum Expr) q:QuantClass decls:DeclListClass bob:BlockOrBarClass)
+   ; perhaps bob.exprs is wrong even if the ExprList.exprs is right?
+   (printf "in Expr macro cast for quant: ~a ~a ~a ~a~n" #'q #'decls #'bob #'bob.exprs)
    (syntax/loc stx (q.symbol decls.translate bob.exprs))] ; stx, not #'q
 
   ; Quantifier with disj
@@ -1053,14 +1056,25 @@
    (with-syntax ([expr1 (my-expand #'expr1)])
      (syntax/loc stx (prime (#:lang (get-check-lang)) expr1)))]
 
-  [((~datum Expr) expr1:ExprClass "+" expr2:ExprClass)
-   (with-syntax ([expr1 (my-expand #'expr1)]
-                 [expr2 (my-expand #'expr2)]
-                 [check-lang (if (forge-context=? '(inst example))
-                               #''forge
-                               #'(get-check-lang))])
-     (syntax/loc stx (+ (#:lang check-lang) expr1 expr2)))]
-
+    ; Semicolon is sugar for union, but only if we're in an `inst` or `example` context
+    ; Both "+" and ";" need to be permitted even in Froglet, *provided* we're in `inst` or `example`.
+    [((~datum Expr) expr1:ExprClass ";" expr2:ExprClass)
+     (with-syntax ([expr1 (my-expand #'expr1)]
+                   [expr2 (my-expand #'expr2)]
+                   [check-lang (if (forge-context=? '(inst example))
+                                   #''forge
+                                   #'(get-check-lang))])
+       (if (forge-context=? '(inst example))
+           (syntax/loc stx (+ (#:lang check-lang) expr1 expr2))
+           (error (format "Semicolon may only be used within an `example` or `inst`."))))]
+    [((~datum Expr) expr1:ExprClass "+" expr2:ExprClass)
+     (with-syntax ([expr1 (my-expand #'expr1)]
+                   [expr2 (my-expand #'expr2)]
+                   [check-lang (if (forge-context=? '(inst example))
+                                   #''forge
+                                   #'(get-check-lang))])
+       (syntax/loc stx (+ (#:lang check-lang) expr1 expr2)))]    
+    
   [((~datum Expr) expr1:ExprClass "-" expr2:ExprClass)
    (with-syntax ([expr1 (my-expand #'expr1)]
                  [expr2 (my-expand #'expr2)])
@@ -1102,12 +1116,14 @@
                  [expr2 (my-expand #'expr2)])
      (syntax/loc stx (join (#:lang (get-check-lang)) expr1 expr2)))]
 
-  [((~datum Expr) name:NameClass "[" exprs:ExprListClass "]")
-   (with-syntax ([name #'name.name]
-                 [(exprs ...) (datum->syntax #f (map my-expand (syntax->list #'(exprs.exprs ...))))])
-     (syntax/loc stx (name exprs ...)))]
+  [((~datum Expr) name:NameClass "[" exprs:ExprListClass "]")   
+   (define RESULT (with-syntax ([name #'name.name]
+                                [(exprs ...) (datum->syntax #f (map my-expand (syntax->list #'(exprs.exprs ...))))])
+                    (syntax/loc stx (name exprs ...))))
+     (printf "Expr macro (name [ exprlist ]) produced: ~a~n" RESULT)
+     RESULT]
 
-  [((~datum Expr) expr1:ExprClass "[" exprs:ExprListClass "]")
+  [((~datum Expr) expr1:ExprClass "[" exprs:ExprListClass "]")   
    (with-syntax ([expr1 (my-expand #'expr1)]
                  [(exprs ...) (datum->syntax #f (map my-expand (syntax->list #'(exprs.exprs ...))))])
      (syntax/loc stx (expr1 exprs ...)))]
@@ -1128,6 +1144,7 @@
    (syntax/loc stx const.translate)]
 
   [((~datum Expr) name:QualNameClass)
+   (printf "in Expr macro for QualName case: name.name=~a~n" (syntax->datum #'name.name))
    (syntax/loc stx name.name)]
 
   [((~datum Expr) "this")

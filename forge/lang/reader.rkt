@@ -77,7 +77,7 @@
     (uncaught-exception-handler (log:error-handler logging-on? compile-time (uncaught-exception-handler)))
     (log:register-run compile-time project this-lang email path))
   (define parse-tree (parse path (make-tokenizer port)))
-  (define ints-coerced (coerce-ints-to-atoms parse-tree))
+  (define ints-coerced (coerce-ints-to-atoms parse-tree))  
  
   (define final `((provide (except-out (all-defined-out) ; So other programs can require it
                                        forge:n))
@@ -113,9 +113,9 @@
 
   (define module-datum `(module forge-mod forge/lang/expander
                           ,@final))
-  ; (printf "Ints-coerced: ~a~n" ints-coerced)
-  ; (raise "STOP")
+  ;(printf "Ints-coerced: ~a~n" ints-coerced)
+  ;(raise "STOP")
   (define result (datum->syntax #f module-datum))
-  ;(printf "debug result of expansion: ~a~n" result)
+  (printf "debug result of expansion: ~a~n" result)
   result)
 

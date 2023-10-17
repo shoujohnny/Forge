@@ -56,8 +56,8 @@ Mult : LONE-TOK | SOME-TOK | ONE-TOK | TWO-TOK
 ArrowMult : LONE-TOK | SET-TOK | ONE-TOK | TWO-TOK | FUNC-TOK | PFUNC-TOK
 ; for helper fun/pred declaration
 HelperMult : LONE-TOK | SET-TOK | ONE-TOK | FUNC-TOK | PFUNC-TOK
-ParaDecl  : DISJ-TOK? NameList /COLON-TOK HelperMult? Expr
-QuantDecl : DISJ-TOK? NameList /COLON-TOK SET-TOK? Expr
+ParaDecl  : DISJ-TOK? NameList /COLON-TOK HelperMult? Expr8 ; rel-expr
+QuantDecl : DISJ-TOK? NameList /COLON-TOK SET-TOK? Expr8 ; rel-expr
 
 ; ArrowDecl should only be used by sig field declaration right now; 
 ; note the optional VAR for Electrum. Remember that a preceding / means
@@ -69,7 +69,8 @@ PredType : WHEAT-TOK
 ; A predicate declaration can contain any number of formulas in its body
 PredDecl : /PRED-TOK PredType? (QualName DOT-TOK)? Name ParaDecls? Block
 ; A function declaration should only ever contain a single expression in its body
-FunDecl : /FUN-TOK (QualName DOT-TOK)? Name ParaDecls? /COLON-TOK HelperMult? Expr /LEFT-CURLY-TOK Expr /RIGHT-CURLY-TOK
+;   the expression must be a rel-expr.
+FunDecl : /FUN-TOK (QualName DOT-TOK)? Name ParaDecls? /COLON-TOK HelperMult? Expr8 /LEFT-CURLY-TOK Expr8 /RIGHT-CURLY-TOK
 ; A ParaDecls is a special declaration form for pred/fun definition, where every identifier
 ; is paired with an expr and (optional) multiplicity
 ParaDecls : /LEFT-PAREN-TOK @ParaDeclList? /RIGHT-PAREN-TOK 
@@ -101,7 +102,6 @@ TestSuiteDecl : /TEST-TOK /SUITE-TOK /FOR-TOK Name /LEFT-CURLY-TOK TestConstruct
 #       | PLUS-TOK | MINUS-TOK | PPLUS-TOK | DOT-TOK ;SUBT-TOK | SUPT-TOK
 ArrowOp : (@Mult | SET-TOK)? ARROW-TOK (@Mult | SET-TOK)?
 CompareOp : IN-TOK | EQ-TOK | LT-TOK | GT-TOK | LEQ-TOK | GEQ-TOK | IS-TOK | NI-TOK
-LetDecl : @Name /EQ-TOK Expr
 Block : /LEFT-CURLY-TOK Expr* /RIGHT-CURLY-TOK
 BlockOrBar : Block | BAR-TOK Expr 
 Quant : ALL-TOK | NO-TOK | SUM-TOK | @Mult
@@ -125,16 +125,25 @@ QuantDeclList : QuantDecl
 ArrowDeclList : ArrowDecl
               | ArrowDecl /COMMA-TOK @ArrowDeclList
 
-LetDeclList : LetDecl
-            | LetDecl /COMMA-TOK @LetDeclList
 TypescopeList : Typescope
               | Typescope /COMMA-TOK @TypescopeList
-ExprList : Expr
-         | Expr /COMMA-TOK @ExprList
+
+; Comma-separated list of rel-expr expressions
+ExprList : Expr8
+         | Expr8 /COMMA-TOK @ExprList
+
+
+; Let declarations appear in formula-position, but may bind either
+LetDecl : @Name /EQ-TOK (Expr | Expr8)
+LetDeclList : LetDecl
+            | LetDecl /COMMA-TOK @LetDeclList
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; This chain of productions enforces operator precedence in brag.
 ; The list goes from weakest to strongest binding operators.
+
+; HT: https://beautifulracket.com/basic-2/expressions.html
+; "[W]hen the parser descends into a new rule, it creates a subnode in the parse tree inside the current node."
 
 ; This machinery is needed because, for better or worse, brag has no
 ; yacc-style "assoc" annotations, and so we need to enforce associativity
@@ -164,10 +173,16 @@ ExprList : Expr
 ; "formulas" and "expressions" --- just produce a parse tree that the 
 ; expander can handle. Alloy 6 spec:
 ;    https://alloytools.org/spec.html
+; Addendum Oct 2023: we now have a rough separation, around Expr8.
 
 ; "All binary operators associate to the left, with the exception of 
 ;  implication and sequence, which associate to the right, and of 
 ;  binary temporal connectives which are not associative."
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Boolean-valued expressions ("formulas")
+; and top of instance-declaration expressions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 Expr    : @Expr1
         | LET-TOK LetDeclList BlockOrBar
@@ -175,8 +190,9 @@ Expr    : @Expr1
         | Quant DISJ-TOK? QuantDeclList BlockOrBar
 Expr1   : @Expr2  | Expr1 OR-TOK Expr2
 Expr2   : @Expr3  | Expr2 IFF-TOK Expr3
-;; right assoc
-Expr3   : @Expr4  | Expr4 IMP-TOK Expr3 (ELSE-TOK Expr3)?        
+;; right assoc ITE (formula case)
+Expr3   : @Expr4  | Expr4 IMP-TOK Expr3 (ELSE-TOK Expr3)?
+;;Expr3   : Expr4 IMP-TOK Expr3 (ELSE-TOK Expr3)? | Expr4       
 Expr4   : @Expr4.5  | Expr4 AND-TOK Expr4.5
 ; Electrum binary operators (not associative)
 Expr4.5 : @Expr5  | Expr5 UNTIL-TOK Expr5
@@ -190,31 +206,63 @@ Expr5   : @Expr6  | NEG-TOK Expr5
                   | BEFORE-TOK Expr5
                   | ONCE-TOK Expr5
                   | HISTORICALLY-TOK Expr5
-Expr6   : @Expr7  | Expr6 NEG-TOK? CompareOp Expr7
-Expr7   : @Expr8 | (NO-TOK | SOME-TOK | LONE-TOK | ONE-TOK | TWO-TOK | SET-TOK) Expr8
-Expr8   : @Expr9  | Expr8 (PLUS-TOK | MINUS-TOK) Expr10
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Transitioning from formulas to rel-expressions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; The parser should not accept a rel-expr being used as a formula.
+; When a rel-expr is expected, advance to that non-terminal (Expr8)
+; Formula context also has its own set of base/escape cases. These may appear to duplicate 
+; the rel-expr context's, but they do not.
+
+;Expr6   : @Expr7  | Expr6 NEG-TOK? CompareOp Expr7
+; Expr7   : @Expr8 | (NO-TOK | SOME-TOK | LONE-TOK | ONE-TOK | TWO-TOK | SET-TOK) Expr8
+
+Expr6   : @Expr7  | Expr8 NEG-TOK? CompareOp Expr8
+Expr7   :           (NO-TOK | SOME-TOK | LONE-TOK | ONE-TOK | TWO-TOK | SET-TOK) Expr8
+                  | /LEFT-PAREN-TOK @Expr /RIGHT-PAREN-TOK ; paren grouping (formula)
+                  | QualName ; name (formula context, could be e.g. a 0-ary pred)
+                  | Block ; non-quantifier grouping outside predicate-declaration bodies
+                  | Name LEFT-SQUARE-TOK ExprList RIGHT-SQUARE-TOK ; predicate invocation (arity > 0)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Relation-valued expressions ("rel-expressions")
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; DO NOT CHANGE THIS: Expr8 IS THE START OF rel-expressions.
+
+Expr8   : @Expr9  | Expr8 (PLUS-TOK | MINUS-TOK | SEMICOLON-TOK) Expr10
+; Support trailing semicolon in `inst` and `example` syntax. 
+                 ; | Expr10 /SEMICOLON-TOK
+
 Expr9   : @Expr10 | CARD-TOK Expr9
 Expr10  : @Expr11 | Expr10 PPLUS-TOK Expr11
 Expr11  : @Expr12 | Expr11 AMP-TOK Expr12
 Expr12  : @Expr13 | Expr12 ArrowOp Expr13
 Expr13  : @Expr14 | Expr13 (SUBT-TOK | SUPT-TOK) Expr14
+; The parser cannot distinguish helper-function invocation from a box join;
+; x[y] might be either and both may be used in the same (rel-expr) context.
 Expr14  : @Expr15 | Expr14 LEFT-SQUARE-TOK ExprList RIGHT-SQUARE-TOK
 Expr15  : @Expr16 | Expr15 DOT-TOK Expr16
                   | Name LEFT-SQUARE-TOK ExprList RIGHT-SQUARE-TOK
 Expr16  : @Expr17 | Expr16 PRIME-TOK
 Expr17  : @Expr18 | (TILDE-TOK | EXP-TOK | STAR-TOK) Expr17
-Expr18  : Const 
-        | QualName 
-        | AT-TOK Name
-        | BACKQUOTE-TOK Name
-        | THIS-TOK
-        | LEFT-CURLY-TOK QuantDeclList BlockOrBar RIGHT-CURLY-TOK
-        | /LEFT-PAREN-TOK @Expr /RIGHT-PAREN-TOK
-        | Block
+Expr18  :          
+          Const ; Relational or integer constant
+        | QualName ; name (rel-expr context, could be e.g. a 0-ary helper function or quant variable)        
+        | BACKQUOTE-TOK Name ; atom name
+        | LEFT-CURLY-TOK QuantDeclList BlockOrBar RIGHT-CURLY-TOK ; set comprehension
+        | /LEFT-PAREN-TOK @Expr8 /RIGHT-PAREN-TOK ; paren grouping (rel-expr context)        
+        | /LEFT-CURLY-TOK @Expr8 /RIGHT-CURLY-TOK ; paren grouping (single rel-expr)
         | Sexpr
+        ;; right assoc ITE (rel-expr case, which requires an else branch)
+        | Expr4 IMP-TOK Expr8 ELSE-TOK Expr8
 
-ArrowExpr : QualName
-          | QualName /ARROW-TOK @ArrowExpr
+        ; Alloy-language stubs, unsupported
+        ;| THIS-TOK
+        ;| AT-TOK Name
+        ; | Block
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -238,7 +286,7 @@ InstDecl : /INST-TOK Name Bounds Scope?
 ;   i.e., this isn't a Forge model, but rather a query 
 ;   from the evaluator:
 EvalRelDecl : ArrowDecl
-EvalDecl : EVAL-TOK Expr
+EvalDecl : EVAL-TOK Expr | EVAL-TOK Expr8
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -249,6 +297,9 @@ ExampleDecl : /EXAMPLE-TOK Name /IS-TOK Expr /FOR-TOK Bounds
 
 ; ??? used where?
 QueryDecl : @Name /COLON-TOK ArrowExpr /EQ-TOK Expr
+
+ArrowExpr : QualName
+          | QualName /ARROW-TOK @ArrowExpr
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

@@ -1065,12 +1065,16 @@ Now with functional forge, do-bind is used instead
 
 ; a reachable from b through r1 + r2 + ...
 (define-syntax (reachable stx)
+  (printf "TN DEBUG in reachable MACRO (before syntax-parse) stx=~a~n" stx)
   (syntax-parse stx
-   [reachable
-   (quasisyntax/loc stx
-     (lambda (a b . r) (reachablefun #,(build-source-location stx) a b r)))]))
+   [reachable    
+    (define RESULT
+      (quasisyntax/loc stx
+        (lambda (a b . r) (reachablefun #,(build-source-location stx) a b r))))
+    (printf "RESULT=~a~n" RESULT)
+    RESULT]))
 
-(define (reachablefun loc a b r)
+(define (reachablefun loc a b r)  
   (unless (equal? 1 (node/expr-arity a)) (raise-user-error (format "First argument \"~a\" to reachable is not a singleton at loc ~a" (deparse a) (srcloc->string loc))))
   (unless (equal? 1 (node/expr-arity b)) (raise-user-error (format "Second argument \"~a\" to reachable is not a singleton at loc ~a" (deparse b) (srcloc->string loc))))
   (in/info (nodeinfo loc 'checklangNoCheck) 

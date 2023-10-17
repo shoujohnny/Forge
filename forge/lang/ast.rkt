@@ -760,7 +760,6 @@
    (define hash2-proc (make-robust-node-hash-syntax node/formula/quantified 3))])
 
 (define (quantified-formula info quantifier decls formula)
-  (printf "DEBUG ast:quantified-formula ~a ~a ~a~n" quantifier decls formula)
   (for ([e (in-list (map cdr decls))])
     (unless (node/expr? e)
       (raise-argument-error quantifier "expr?" e))
@@ -817,41 +816,13 @@
     [(_ check-lang:opt-check-lang-class (~optional (~and #:disj disj)) ([v0 e0 m0:opt-mult-class] ...) pred)     
       (quasisyntax/loc stx (all/info (nodeinfo #,(build-source-location stx) check-lang.check-lang) (~? disj) ([v0 e0 m0] ...) pred))]))
 
-
-
-
-
-
-
-;;;; DEBUGGING -- TN REMOVE -- DEBUGGING 
-(require (for-syntax racket))
-(define-for-syntax (my-expand stx)
-  (define core-funcs-and-macros
-    (map (curry datum->syntax stx)
-         '(^ * ~ + - & join
-           -> => implies ! not and or && || ifte iff <=>
-           = in ni != !in !ni is
-           no some one lone all set two
-           int< int> int= int>= int<=
-           add subtract multiply divide sign abs remainder
-           card sum sing succ max min sum-quant
-           node/int/constant
-           let)))
-
-  (define result (local-expand stx 'expression core-funcs-and-macros))
-  result)
-;;;;;;;;;;;;
-
 (define-syntax (all/info stx)
-  (printf "in all/info macro for ~a~n" stx)
   (syntax-parse stx
     ; quantifier case with disjointness flag; embed and repeat
     ; TODO: currently discarding the multiplicity info, unchecked
     [(_ info #:disj ([v0 e0 m0:opt-mult-class] ...) pred)
      #'(all/info info ([v0 e0 m0] ...) (=> (no-pairwise-intersect (list v0 ...)) pred))]
     [(_ info ([v0 e0 m0:opt-mult-class] ...) pred)
-     (printf "in all/info macro CASE 2 with pred = ~a~n" #'pred)
-     (printf "my-expand of pred = ~a;~n" (my-expand #'pred))
      (quasisyntax/loc stx
        (let* ([v0 (node/expr/quantifier-var info (node/expr-arity e0) (gensym (format "~a_all" 'v0)) 'v0)] ...)
          (quantified-formula info 'all (list (cons v0 e0) ...) pred)))]))

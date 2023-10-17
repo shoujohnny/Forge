@@ -224,7 +224,8 @@ Expr7   :           (NO-TOK | SOME-TOK | LONE-TOK | ONE-TOK | TWO-TOK | SET-TOK)
                   | /LEFT-PAREN-TOK @Expr /RIGHT-PAREN-TOK ; paren grouping (formula)
                   | QualName ; name (formula context, could be e.g. a 0-ary pred)
                   | Block ; non-quantifier grouping outside predicate-declaration bodies
-                  | Name LEFT-SQUARE-TOK ExprList RIGHT-SQUARE-TOK ; predicate invocation (arity > 0)
+                  ; predicate invocation (arity > 0). This MUST be QualName, for expander
+                  | QualName LEFT-SQUARE-TOK ExprList RIGHT-SQUARE-TOK
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Relation-valued expressions ("rel-expressions")

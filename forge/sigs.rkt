@@ -1067,7 +1067,7 @@ Now with functional forge, do-bind is used instead
 (define-syntax (reachable stx)
   (printf "TN DEBUG in reachable MACRO (before syntax-parse) stx=~a~n" stx)
   (syntax-parse stx
-   [reachable    
+   [reachable
     (define RESULT
       (quasisyntax/loc stx
         (lambda (a b . r) (reachablefun #,(build-source-location stx) a b r))))

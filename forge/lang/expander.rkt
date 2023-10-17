@@ -915,18 +915,21 @@
                (list #,@(syntax/loc stx bounds.translate))))))]))
 
 (define (disambiguate-block xs)
-  (cond [(empty? xs) 
-         ; {} always means the formula true
-         true]
-         ; Body of a helper function
-        [(and (equal? 1 (length xs)) (node/expr? (first xs)))
-         (first xs)]
-        [(node/formula? (first xs))
-         (&& xs)]         
-        [(and (equal? 1 (length xs)) (node/int? (first xs)))
-         (first xs)]         
-        [else 
-         (raise-user-error (format "~a" (first xs)) (format "Ill-formed block"))]))
+  (cond
+    ; {} always means the formula true
+    [(empty? xs) 
+     true]
+    ; Body of a helper function: *one* child (node/expr)
+    [(and (equal? 1 (length xs)) (node/expr? (first xs)))
+     (first xs)]
+    ; Body of a predicate: any number of children (node/formula)
+    [(node/formula? (first xs))
+     (&& xs)]
+    ; Body of a helper that produces a node/int
+    [(and (equal? 1 (length xs)) (node/int? (first xs)))
+     (first xs)]         
+    [else 
+     (raise-user-error (format "~a" xs) (format "Ill-formed block: expected either one expr or any number of formulas"))]))
 
 ; Block : /LEFT-CURLY-TOK Expr* /RIGHT-CURLY-TOK
 (define-syntax (Block stx)
@@ -1116,13 +1119,6 @@
                  [expr2 (my-expand #'expr2)])
      (syntax/loc stx (join (#:lang (get-check-lang)) expr1 expr2)))]
 
-  [((~datum Expr) name:NameClass "[" exprs:ExprListClass "]")   
-   (define RESULT (with-syntax ([name #'name.name]
-                                [(exprs ...) (datum->syntax #f (map my-expand (syntax->list #'(exprs.exprs ...))))])
-                    (syntax/loc stx (name exprs ...))))
-     (printf "Expr macro (name [ exprlist ]) produced: ~a~n" RESULT)
-     RESULT]
-
   [((~datum Expr) expr1:ExprClass "[" exprs:ExprListClass "]")   
    (with-syntax ([expr1 (my-expand #'expr1)]
                  [(exprs ...) (datum->syntax #f (map my-expand (syntax->list #'(exprs.exprs ...))))])
@@ -1142,6 +1138,18 @@
 
   [((~datum Expr) const:ConstClass)   
    (syntax/loc stx const.translate)]
+
+  ; Expands a QualName into the corresponding identifier. This might be a built-in macro
+  ; like `reachable` but it might also be a predicate/function procedure name. Two cases:
+  ; one with args and one without.
+    ; TODO: used to be "NameClass" for the first.
+    
+  [((~datum Expr) name:QualNameClass "[" exprs:ExprListClass "]")   
+   (define RESULT (with-syntax ([name #'name.name]
+                                [(exprs ...) (datum->syntax #f (map my-expand (syntax->list #'(exprs.exprs ...))))])
+                    (syntax/loc stx (name exprs ...))))
+     (printf "Expr macro (name [ exprlist ]) produced: ~a~n" RESULT)
+     RESULT]
 
   [((~datum Expr) name:QualNameClass)
    (printf "in Expr macro for QualName case: name.name=~a~n" (syntax->datum #'name.name))
